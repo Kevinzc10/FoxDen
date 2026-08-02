@@ -1,0 +1,23 @@
+kind = "mobile"
+previewPath = "/"
+title = "FoxDen"
+version = "1.0.0"
+id = "artifacts/foxden"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 25630
+
+[services.development]
+run = "pnpm --filter @workspace/foxden run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/foxden", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/foxden", "run", "serve" ]
+
+[services.env]
+PORT = "25630"
+BASE_PATH = "/"
