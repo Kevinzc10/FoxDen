@@ -14,6 +14,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { FoxDenProvider } from '@/context/FoxDenContext';
 import { PlanProvider } from '@/context/PlanContext';
 
@@ -25,6 +26,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen
         name="new-assignment"
         options={{ headerShown: false, presentation: 'modal' }}
@@ -53,26 +55,22 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    // Icon fonts — must be declared explicitly with newArchEnabled: true
-    // so Expo Go loads the correct glyph files instead of falling back to
-    // the system CJK font (which makes all icons look like Japanese chars).
-    ...Ionicons.font,
-    ...Feather.font,
-  });
+function RootLayoutContent({
+  fontsLoaded,
+  fontError,
+}: {
+  fontsLoaded: boolean;
+  fontError: Error | null;
+}) {
+  const { authState } = useAuth();
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && authState !== 'initializing') {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [authState, fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if ((!fontsLoaded && !fontError) || authState === 'initializing') return null;
 
   return (
     <SafeAreaProvider>
@@ -90,5 +88,25 @@ export default function RootLayout() {
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
+  );
+}
+
+export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    // Icon fonts — must be declared explicitly with newArchEnabled: true
+    // so Expo Go loads the correct glyph files instead of falling back to
+    // the system CJK font (which makes all icons look like Japanese chars).
+    ...Ionicons.font,
+    ...Feather.font,
+  });
+
+  return (
+    <AuthProvider>
+      <RootLayoutContent fontsLoaded={fontsLoaded} fontError={fontError} />
+    </AuthProvider>
   );
 }

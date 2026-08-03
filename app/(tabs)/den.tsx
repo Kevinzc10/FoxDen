@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useFoxDen } from '@/context/FoxDenContext';
 import { usePlan } from '@/context/PlanContext';
+import { useAuth } from '@/context/AuthContext';
 import { FoxCompanion } from '@/components/FoxCompanion';
 import { XPBar } from '@/components/XPBar';
 import { getFoxLevel, getXPForNextLevel, PERSONALITIES } from '@/constants/foxData';
@@ -36,6 +38,7 @@ export default function DenScreen() {
   const { fox, updateFoxName, updateFoxPersonality, assignments, focusSessions } = useFoxDen();
   const router = useRouter();
   const { plan } = usePlan();
+  const { user, authState, signOut } = useAuth();
   const isFoxPlus = plan === 'foxplus';
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(fox.name);
@@ -51,6 +54,22 @@ export default function DenScreen() {
       updateFoxName(nameInput.trim());
     }
     setEditingName(false);
+  };
+
+  const handleAccountAction = async () => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    try {
+      await signOut();
+    } catch (error) {
+      Alert.alert(
+        'Could not sign out',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+    }
   };
 
   const handlePersonality = (p: FoxPersonality) => {
@@ -129,6 +148,40 @@ export default function DenScreen() {
               level={foxLevel.level}
               title={foxLevel.title}
             />
+          </View>
+        </Animated.View>
+
+        {/* Account */}
+        <Animated.View entering={FadeInDown.delay(140).springify()}>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>ACCOUNT</Text>
+          <View style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.accountIcon, { backgroundColor: colors.primary + '18' }]}>
+              <Ionicons name={user ? 'person' : 'person-outline'} size={22} color={colors.primary} />
+            </View>
+            <View style={styles.accountInfo}>
+              <Text style={[styles.accountTitle, { color: colors.foreground }]}>
+                {user ? 'Signed in' : 'Keep your den connected'}
+              </Text>
+              <Text style={[styles.accountSubtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+                {user?.email ?? 'Sign in or create an account when you are ready'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleAccountAction}
+              disabled={authState === 'initializing'}
+              style={[
+                styles.accountAction,
+                {
+                  backgroundColor: user ? colors.surface : colors.primary,
+                  borderColor: user ? colors.border : colors.primary,
+                },
+              ]}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.accountActionText, { color: user ? colors.foreground : colors.primaryForeground }]}>
+                {user ? 'Sign out' : 'Sign in'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
@@ -342,6 +395,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   levelText: { fontSize: 13, fontFamily: 'Inter_700Bold' },
+  accountCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 14 },
+  accountIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  accountInfo: { flex: 1, gap: 3 },
+  accountTitle: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  accountSubtitle: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  accountAction: { borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
+  accountActionText: { fontSize: 12, fontFamily: 'Inter_700Bold' },
   sectionTitle: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, marginTop: 8, marginBottom: 8 },
   statsGrid: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
   statItem: {
