@@ -66,6 +66,8 @@ interface FoxDenContextType {
   dailyHunt: DailyHunt | null;
   claimHuntReward: () => void;
 
+  xpLog: XPRecord[];
+
   getTodayStats: () => TodayStats;
   getNextRecommendedAssignment: () => Assignment | null;
   getDialogue: (situation: Situation) => string;
@@ -486,6 +488,7 @@ export function FoxDenProvider({ children }: { children: React.ReactNode }) {
         addFocusSession,
         dailyHunt,
         claimHuntReward,
+        xpLog,
         getTodayStats,
         getNextRecommendedAssignment,
         getDialogue,
