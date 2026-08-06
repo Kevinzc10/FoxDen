@@ -41,3 +41,19 @@ export const supabase = isSupabaseConfigured
       },
     })
   : null;
+
+
+if (supabase) {
+  console.log("🦊 FoxDen connected to Supabase!");
+} else {
+  console.log("⚠️ Supabase not configured");
+}
+
+
+supabase?.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    console.log("❌ Supabase error:", error.message);
+  } else {
+    console.log("✅ Supabase responded:", data);
+  }
+});
