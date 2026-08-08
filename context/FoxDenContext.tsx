@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Assignment,
   DailyHunt,
@@ -14,14 +13,15 @@ import {
   XPRecord,
 } from '@/types';
 import { generateId, getFoxDialogue, isOverdue, todayString } from '@/constants/foxData';
-
-const STORAGE_KEYS = {
-  FOX: '@foxden/fox',
-  ASSIGNMENTS: '@foxden/assignments',
-  FOCUS_SESSIONS: '@foxden/focus_sessions',
-  HUNT: '@foxden/hunt',
-  XP_LOG: '@foxden/xp_log',
-};
+import { STORAGE_KEYS } from '@/services/storage/keys';
+import { readJson, writeJson } from '@/services/storage/localStore';
+import {
+  assignmentsSchema,
+  dailyHuntSchema,
+  focusSessionsSchema,
+  foxSchema,
+  xpLogSchema,
+} from '@/services/storage/schemas';
 
 const DEFAULT_FOX: Fox = {
   name: 'Ember',
@@ -185,22 +185,23 @@ export function FoxDenProvider({ children }: { children: React.ReactNode }) {
   foxRef.current = fox;
   huntRef.current = dailyHunt;
 
-  // Load data on mount
+  // Load each persisted slice independently so a corrupted key cannot discard
+  // valid data stored under another FoxDen key.
   useEffect(() => {
     (async () => {
       try {
-        const [foxRaw, assignRaw, focusRaw, huntRaw, xpRaw] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.FOX),
-          AsyncStorage.getItem(STORAGE_KEYS.ASSIGNMENTS),
-          AsyncStorage.getItem(STORAGE_KEYS.FOCUS_SESSIONS),
-          AsyncStorage.getItem(STORAGE_KEYS.HUNT),
-          AsyncStorage.getItem(STORAGE_KEYS.XP_LOG),
+        const [foxResult, assignmentsResult, focusResult, huntResult, xpResult] = await Promise.all([
+          readJson(STORAGE_KEYS.FOX, foxSchema, DEFAULT_FOX),
+          readJson(STORAGE_KEYS.ASSIGNMENTS, assignmentsSchema, [] as Assignment[]),
+          readJson(STORAGE_KEYS.FOCUS_SESSIONS, focusSessionsSchema, [] as FocusSessionRecord[]),
+          readJson(STORAGE_KEYS.HUNT, dailyHuntSchema.nullable(), null),
+          readJson(STORAGE_KEYS.XP_LOG, xpLogSchema, [] as XPRecord[]),
         ]);
 
-        const loadedFox: Fox = foxRaw ? JSON.parse(foxRaw) : DEFAULT_FOX;
-        const loadedAssignments: Assignment[] = assignRaw ? JSON.parse(assignRaw) : [];
-        const loadedFocus: FocusSessionRecord[] = focusRaw ? JSON.parse(focusRaw) : [];
-        const loadedXP: XPRecord[] = xpRaw ? JSON.parse(xpRaw) : [];
+        const loadedFox: Fox = foxResult.value;
+        const loadedAssignments: Assignment[] = assignmentsResult.value;
+        const loadedFocus: FocusSessionRecord[] = focusResult.value;
+        const loadedXP: XPRecord[] = xpResult.value;
 
         // Update overdue statuses
         const today = todayString();
@@ -210,25 +211,20 @@ export function FoxDenProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Hunt: load or generate fresh if new day
-        let hunt: DailyHunt;
-        if (huntRaw) {
-          const parsed: DailyHunt = JSON.parse(huntRaw);
-          if (parsed.date === today) {
-            hunt = calcHuntProgress(parsed, updatedAssignments, loadedFocus);
-          } else {
-            hunt = generateDailyHunt(updatedAssignments);
-          }
-        } else {
-          hunt = generateDailyHunt(updatedAssignments);
-        }
+        const storedHunt = huntResult.value;
+        const hunt =
+          storedHunt && storedHunt.date === today
+            ? calcHuntProgress(storedHunt, updatedAssignments, loadedFocus)
+            : generateDailyHunt(updatedAssignments);
 
         setFox(loadedFox);
         setAssignments(updatedAssignments);
         setFocusSessions(loadedFocus);
         setDailyHunt(hunt);
         setXPLog(loadedXP);
-      } catch (e) {
-        // Fallback to defaults
+      } catch {
+        // Individual storage corruption is already handled by readJson. This
+        // fallback only protects startup from an unexpected load-time error.
       } finally {
         setIsLoaded(true);
       }
@@ -237,29 +233,29 @@ export function FoxDenProvider({ children }: { children: React.ReactNode }) {
 
   // Persist fox
   const saveFox = useCallback((f: Fox) => {
-    AsyncStorage.setItem(STORAGE_KEYS.FOX, JSON.stringify(f)).catch(() => {});
+    void writeJson(STORAGE_KEYS.FOX, f, foxSchema);
   }, []);
 
   // Persist assignments and update hunt
   const saveAssignments = useCallback((a: Assignment[], f?: FocusSessionRecord[]) => {
-    AsyncStorage.setItem(STORAGE_KEYS.ASSIGNMENTS, JSON.stringify(a)).catch(() => {});
+    void writeJson(STORAGE_KEYS.ASSIGNMENTS, a, assignmentsSchema);
     const sessions = f ?? focusSessionsRef.current;
     const hunt = huntRef.current;
     if (hunt) {
       const updated = calcHuntProgress(hunt, a, sessions);
       setDailyHunt(updated);
-      AsyncStorage.setItem(STORAGE_KEYS.HUNT, JSON.stringify(updated)).catch(() => {});
+      void writeJson(STORAGE_KEYS.HUNT, updated, dailyHuntSchema);
     }
   }, []);
 
   // Persist focus sessions and update hunt
   const saveFocusSessions = useCallback((sessions: FocusSessionRecord[]) => {
-    AsyncStorage.setItem(STORAGE_KEYS.FOCUS_SESSIONS, JSON.stringify(sessions)).catch(() => {});
+    void writeJson(STORAGE_KEYS.FOCUS_SESSIONS, sessions, focusSessionsSchema);
     const hunt = huntRef.current;
     if (hunt) {
       const updated = calcHuntProgress(hunt, assignmentsRef.current, sessions);
       setDailyHunt(updated);
-      AsyncStorage.setItem(STORAGE_KEYS.HUNT, JSON.stringify(updated)).catch(() => {});
+      void writeJson(STORAGE_KEYS.HUNT, updated, dailyHuntSchema);
     }
   }, []);
 
@@ -272,7 +268,7 @@ export function FoxDenProvider({ children }: { children: React.ReactNode }) {
     const record: XPRecord = { date: todayString(), amount, reason };
     setXPLog((prev) => {
       const updated = [...prev, record];
-      AsyncStorage.setItem(STORAGE_KEYS.XP_LOG, JSON.stringify(updated)).catch(() => {});
+      void writeJson(STORAGE_KEYS.XP_LOG, updated, xpLogSchema);
       return updated;
     });
   }, [saveFox]);
@@ -434,7 +430,7 @@ export function FoxDenProvider({ children }: { children: React.ReactNode }) {
     });
     const claimed = { ...hunt, claimed: true };
     setDailyHunt(claimed);
-    AsyncStorage.setItem(STORAGE_KEYS.HUNT, JSON.stringify(claimed)).catch(() => {});
+    void writeJson(STORAGE_KEYS.HUNT, claimed, dailyHuntSchema);
   }, [awardXP, saveFox]);
 
   const getTodayStats = useCallback((): TodayStats => {
